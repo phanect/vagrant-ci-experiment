@@ -1,0 +1,52 @@
+name: GitHub Actions
+
+on:
+  pull_request:
+    branches:
+      - master
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+  push:
+    branches:
+      - master
+  release:
+    types:
+      - published
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image:
+          - ubuntu/focal64
+          - debian/buster64
+          - centos/8
+
+    steps:
+      - name: install VirtualBox
+        run: |
+          echo "deb [arch=amd64] https://download.virtualbox.org/virtualbox/debian $(lsb_release --codename --short) contrib" | sudo tee /etc/apt/sources.list.d/virtualbox.list
+          wget -q https://www.virtualbox.org/download/oracle_vbox_2016.asc -O- | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install virtualbox-6.1
+      - name: install vagrant
+        run: |
+          curl --output /tmp/vagrant.deb -sSL https://releases.hashicorp.com/vagrant/2.2.7/vagrant_2.2.7_x86_64.deb
+          sudo dpkg -i /tmp/vagrant.deb
+
+      # Generate Vagrantfile for the image
+      - name: Use Node.js 14.x
+        uses: actions/setup-node@v1
+        with:
+          node-version: 14.x
+      - run: npm -g install ejs-cli
+      - run: "echo '{ \"image\": \"${{ matrix.image}}\" }' > ./ejs-options.json"
+      - run: ejs-cli "./.github/workflows/Vagrantfile.ejs" --options ./ejs-options.json > ./Vagrantfile
+
+      - run: vagrant up
+      - run: vagrant --command "git clone https://github.com/${GITHUB_REPOSITORY}"
+      - run: vagrant --command "./script-to-test.sh"
